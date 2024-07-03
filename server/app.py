@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from models import db, Restaurant, RestaurantPizza, Pizza
 from flask_migrate import Migrate
-from flask import Flask, request, make_response
+from flask import Flask, request, jsonify
 from flask_restful import Api, Resource
 import os
 
@@ -14,15 +14,63 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.json.compact = False
 
 migrate = Migrate(app, db)
-
 db.init_app(app)
-
 api = Api(app)
+
+
+class Restaurants(Resource):
+    def get(self):
+        restaurants = Restaurant.query.all()
+        return jsonify([restaurant.to_dict() for restaurant in restaurants])
+
+
+class RestaurantDetail(Resource):
+    def get(self, id):
+        restaurant = Restaurant.query.get(id)
+        if restaurant:
+            return jsonify(restaurant.to_dict(include=['restaurant_pizzas', 'restaurant_pizzas.pizza']))
+        return jsonify({'error': 'Restaurant not found'}), 404
+
+    def delete(self, id):
+        restaurant = Restaurant.query.get(id)
+        if restaurant:
+            db.session.delete(restaurant)
+            db.session.commit()
+            return '', 204
+        return jsonify({'error': 'Restaurant not found'}), 404
+
+
+class Pizzas(Resource):
+    def get(self):
+        pizzas = Pizza.query.all()
+        return jsonify([pizza.to_dict() for pizza in pizzas])
+
+
+class RestaurantPizzas(Resource):
+    def post(self):
+        data = request.get_json()
+        try:
+            restaurant_pizza = RestaurantPizza(
+                price=data['price'],
+                pizza_id=data['pizza_id'],
+                restaurant_id=data['restaurant_id']
+            )
+            db.session.add(restaurant_pizza)
+            db.session.commit()
+            return jsonify(restaurant_pizza.to_dict(include=['pizza', 'restaurant'])), 201
+        except ValueError as e:
+            return jsonify({'errors': [str(e)]}), 400
 
 
 @app.route("/")
 def index():
     return "<h1>Code challenge</h1>"
+
+
+api.add_resource(Restaurants, '/restaurants')
+api.add_resource(RestaurantDetail, '/restaurants/<int:id>')
+api.add_resource(Pizzas, '/pizzas')
+api.add_resource(RestaurantPizzas, '/restaurant_pizzas')
 
 
 if __name__ == "__main__":
